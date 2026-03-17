@@ -1,0 +1,104 @@
+{
+  "properties": {
+    "connectionReferences": {
+      "shared_sharepointonline": {
+        "runtimeSource": "invoker",
+        "connection": {
+          "connectionReferenceLogicalName": "app_sharedsharepointonline_e84a4"
+        },
+        "api": {
+          "name": "shared_sharepointonline"
+        }
+      }
+    },
+    "definition": {
+      "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+      "contentVersion": "1.0.0.0",
+      "parameters": {
+        "$connections": {
+          "defaultValue": {},
+          "type": "Object"
+        },
+        "$authentication": {
+          "defaultValue": {},
+          "type": "SecureObject"
+        }
+      },
+      "triggers": {
+        "manual": {
+          "splitOn": "@triggerBody()['rows']",
+          "metadata": {
+            "operationMetadataId": "c99f43f5-de22-4d3c-b46b-98a8ecbf7f5e"
+          },
+          "type": "Request",
+          "kind": "ApiConnection",
+          "inputs": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "rows": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "entity": {
+                        "type": "object",
+                        "properties": {
+                          "ID": {
+                            "title": "ID",
+                            "type": "integer",
+                            "format": "int64"
+                          }
+                        },
+                        "required": []
+                      }
+                    },
+                    "required": []
+                  }
+                }
+              },
+              "required": []
+            },
+            "host": {
+              "connection": {
+                "name": "@parameters('$connections')['shared_sharepointonline']['connectionId']"
+              }
+            },
+            "operationId": "ForASelectedFileHybridTrigger",
+            "parameters": {
+              "dataset": "https://32kfnw.sharepoint.com/sites/Documentset2",
+              "table": "81392896-b6a4-45bb-b7c7-7be850729c7f"
+            }
+          }
+        }
+      },
+      "actions": {
+        "Get_file_properties": {
+          "runAfter": {},
+          "metadata": {
+            "operationMetadataId": "886ceb0e-395b-46b4-a57a-a32b5e5c1f34"
+          },
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_sharepointonline",
+              "operationId": "GetFileItem",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"
+            },
+            "parameters": {
+              "dataset": "https://32kfnw.sharepoint.com/sites/Documentset2",
+              "table": "81392896-b6a4-45bb-b7c7-7be850729c7f",
+              "id": "@triggerBody()?['entity']?['ID']"
+            },
+            "authentication": {
+              "type": "Raw",
+              "value": "@json(decodeBase64(triggerOutputs().headers['X-MS-APIM-Tokens']))['$ConnectionKey']"
+            }
+          }
+        }
+      }
+    },
+    "templateName": null
+  },
+  "schemaVersion": "1.0.0.0"
+}
