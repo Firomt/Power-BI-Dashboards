@@ -1,0 +1,562 @@
+{
+  "properties": {
+    "connectionReferences": {
+      "shared_sharepointonline": {
+        "runtimeSource": "invoker",
+        "connection": {
+          "connectionReferenceLogicalName": "app_sharedsharepointonline_e84a4"
+        },
+        "api": {
+          "name": "shared_sharepointonline"
+        }
+      },
+      "shared_office365": {
+        "runtimeSource": "invoker",
+        "connection": {
+          "connectionReferenceLogicalName": "app_sharedoffice365_f4619"
+        },
+        "api": {
+          "name": "shared_office365"
+        }
+      },
+      "shared_approvals": {
+        "runtimeSource": "invoker",
+        "connection": {
+          "connectionReferenceLogicalName": "new_sharedapprovals_b9d47"
+        },
+        "api": {
+          "name": "shared_approvals"
+        }
+      }
+    },
+    "definition": {
+      "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+      "contentVersion": "1.0.0.0",
+      "parameters": {
+        "$authentication": {
+          "defaultValue": {},
+          "type": "SecureObject"
+        },
+        "$connections": {
+          "defaultValue": {},
+          "type": "Object"
+        }
+      },
+      "triggers": {
+        "manual": {
+          "splitOn": "@triggerBody()['rows']",
+          "metadata": {
+            "operationMetadataId": "c99f43f5-de22-4d3c-b46b-98a8ecbf7f5e"
+          },
+          "type": "Request",
+          "kind": "ApiConnection",
+          "inputs": {
+            "operationId": "ForASelectedFileHybridTrigger",
+            "parameters": {
+              "dataset": "https://32kfnw.sharepoint.com/sites/Documentset2",
+              "table": "81392896-b6a4-45bb-b7c7-7be850729c7f"
+            },
+            "schema": {
+              "type": "object",
+              "properties": {
+                "rows": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "entity": {
+                        "properties": {
+                          "ID": {
+                            "title": "ID",
+                            "type": "integer",
+                            "format": "int64"
+                          },
+                          "fileName": {
+                            "title": "fileName",
+                            "type": "string"
+                          }
+                        },
+                        "type": "object",
+                        "required": []
+                      }
+                    }
+                  }
+                }
+              },
+              "required": [
+                "rows"
+              ]
+            },
+            "host": {
+              "connection": {
+                "name": "@parameters('$connections')['shared_sharepointonline']['connectionId']"
+              }
+            }
+          }
+        }
+      },
+      "actions": {
+        "Get_file_properties": {
+          "runAfter": {},
+          "metadata": {
+            "operationMetadataId": "886ceb0e-395b-46b4-a57a-a32b5e5c1f34"
+          },
+          "type": "OpenApiConnection",
+          "inputs": {
+            "parameters": {
+              "dataset": "https://32kfnw.sharepoint.com/sites/Documentset2",
+              "table": "81392896-b6a4-45bb-b7c7-7be850729c7f",
+              "id": "@triggerBody()?['entity']?['ID']"
+            },
+            "host": {
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+              "operationId": "GetFileItem",
+              "connectionName": "shared_sharepointonline"
+            }
+          }
+        },
+        "Condition": {
+          "actions": {
+            "Update_Status_-_Pending_Initial_Approval": {
+              "type": "OpenApiConnection",
+              "inputs": {
+                "parameters": {
+                  "dataset": "https://32kfnw.sharepoint.com/sites/Documentset2",
+                  "table": "81392896-b6a4-45bb-b7c7-7be850729c7f",
+                  "id": "@triggerBody()?['entity']['ID']",
+                  "item/Status/Value": "Pending Initial Approval"
+                },
+                "host": {
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                  "operationId": "PatchFileItem",
+                  "connectionName": "shared_sharepointonline"
+                }
+              }
+            },
+            "Audit_log": {
+              "runAfter": {
+                "Update_Status_-_Pending_Initial_Approval": [
+                  "Succeeded"
+                ]
+              },
+              "type": "OpenApiConnection",
+              "inputs": {
+                "parameters": {
+                  "dataset": "https://32kfnw.sharepoint.com/sites/Documentset2",
+                  "table": "ccc57b77-a63a-404e-bdc9-7b945ccc755f",
+                  "item/DocumentName": "@triggerBody()?['entity']['fileName']",
+                  "item/Status": "Pending Initial Approval",
+                  "item/Action/Value": "Started",
+                  "item/ActionDate": "@utcNow()",
+                  "item/Performedby/Claims": "@outputs('Update_Status_-_Pending_Initial_Approval')?['body/Author/Email']"
+                },
+                "host": {
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                  "operationId": "PostItem",
+                  "connectionName": "shared_sharepointonline"
+                }
+              }
+            },
+            "Send_an_email_(V2)": {
+              "runAfter": {
+                "decode": [
+                  "Succeeded"
+                ]
+              },
+              "type": "OpenApiConnection",
+              "inputs": {
+                "parameters": {
+                  "emailMessage/To": "@outputs('decode')",
+                  "emailMessage/Subject": "Approval Process Started",
+                  "emailMessage/Body": "<h2 class=\"editor-heading-h2\">The approval workflow for your Document Set, \"@{triggerBody()?['entity']['fileName']}\" has started.<br><b></b></h2><b><strong class=\"editor-text-bold\">Status:</strong></b> <i><em class=\"editor-text-italic\">Pending Initial Approval</em></i>",
+                  "emailMessage/Importance": "Normal"
+                },
+                "host": {
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365",
+                  "operationId": "SendEmailV2",
+                  "connectionName": "shared_office365"
+                }
+              }
+            },
+            "Start_and_wait_for_an_approval": {
+              "runAfter": {
+                "Send_an_email_(V2)": [
+                  "Succeeded"
+                ]
+              },
+              "type": "OpenApiConnectionWebhook",
+              "inputs": {
+                "parameters": {
+                  "approvalType": "BasicAwaitAll",
+                  "WebhookApprovalCreationInput/title": "Document Set Initial Approval",
+                  "WebhookApprovalCreationInput/assignedTo": "FiromsaMitiku@32kfnw.onmicrosoft.com;DuresaGuye@32kfnw.onmicrosoft.com",
+                  "WebhookApprovalCreationInput/details": "Please review the document set.",
+                  "WebhookApprovalCreationInput/itemLink": "@outputs('Get_file_properties')?['body/{Link}']",
+                  "WebhookApprovalCreationInput/itemLinkDescription": "Here is the document set",
+                  "WebhookApprovalCreationInput/enableNotifications": true,
+                  "WebhookApprovalCreationInput/enableReassignment": true
+                },
+                "host": {
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_approvals",
+                  "operationId": "StartAndWaitForAnApproval",
+                  "connectionName": "shared_approvals"
+                }
+              }
+            },
+            "Check_outcome_of_approval_process": {
+              "actions": {
+                "Update_Status_-Pending_final_approval": {
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "parameters": {
+                      "dataset": "https://32kfnw.sharepoint.com/sites/Documentset2",
+                      "table": "81392896-b6a4-45bb-b7c7-7be850729c7f",
+                      "id": "@triggerBody()?['entity']['ID']",
+                      "item/Status/Value": "Pending Final Approval"
+                    },
+                    "host": {
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                      "operationId": "PatchFileItem",
+                      "connectionName": "shared_sharepointonline"
+                    }
+                  }
+                },
+                "Final_Approval": {
+                  "runAfter": {
+                    "For_each": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "OpenApiConnectionWebhook",
+                  "inputs": {
+                    "parameters": {
+                      "approvalType": "Basic",
+                      "WebhookApprovalCreationInput/title": "Final Document Set Approval",
+                      "WebhookApprovalCreationInput/assignedTo": "FiromsaMitiku@32kfnw.onmicrosoft.com",
+                      "WebhookApprovalCreationInput/itemLink": "@outputs('Get_file_properties')?['body/{Link}']",
+                      "WebhookApprovalCreationInput/enableNotifications": true,
+                      "WebhookApprovalCreationInput/enableReassignment": true
+                    },
+                    "host": {
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_approvals",
+                      "operationId": "StartAndWaitForAnApproval",
+                      "connectionName": "shared_approvals"
+                    }
+                  }
+                },
+                "Condition_2": {
+                  "actions": {
+                    "Update_Status_-_Approved": {
+                      "type": "OpenApiConnection",
+                      "inputs": {
+                        "parameters": {
+                          "dataset": "https://32kfnw.sharepoint.com/sites/Documentset2",
+                          "table": "81392896-b6a4-45bb-b7c7-7be850729c7f",
+                          "id": "@triggerBody()?['entity']['ID']",
+                          "item/Status/Value": "Approved"
+                        },
+                        "host": {
+                          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                          "operationId": "PatchFileItem",
+                          "connectionName": "shared_sharepointonline"
+                        }
+                      }
+                    },
+                    "Send_an_email_(V2)_2": {
+                      "runAfter": {
+                        "Log_final_approval_status": [
+                          "Succeeded"
+                        ]
+                      },
+                      "type": "OpenApiConnection",
+                      "inputs": {
+                        "parameters": {
+                          "emailMessage/To": "@outputs('decode')",
+                          "emailMessage/Subject": "Your Request for document set approval is Approved",
+                          "emailMessage/Body": "<p class=\"editor-paragraph\">Your Request for document set approval is Approved</p>",
+                          "emailMessage/Importance": "Normal"
+                        },
+                        "host": {
+                          "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365",
+                          "operationId": "SendEmailV2",
+                          "connectionName": "shared_office365"
+                        }
+                      }
+                    },
+                    "Log_final_approval_status": {
+                      "runAfter": {
+                        "Update_Status_-_Approved": [
+                          "Succeeded"
+                        ]
+                      },
+                      "type": "OpenApiConnection",
+                      "inputs": {
+                        "parameters": {
+                          "dataset": "https://32kfnw.sharepoint.com/sites/Documentset2",
+                          "table": "ccc57b77-a63a-404e-bdc9-7b945ccc755f",
+                          "item/DocumentName": "@triggerBody()?['entity']['fileName']",
+                          "item/Action/Value": "Approved",
+                          "item/ActionDate": "@utcNow()",
+                          "item/Performedby/Claims": "@item()?['responder/email']"
+                        },
+                        "host": {
+                          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                          "operationId": "PostItem",
+                          "connectionName": "shared_sharepointonline"
+                        }
+                      }
+                    }
+                  },
+                  "runAfter": {
+                    "Final_Approval": [
+                      "Succeeded"
+                    ]
+                  },
+                  "else": {
+                    "actions": {
+                      "Update_final_approval_status_-_Rejected": {
+                        "type": "OpenApiConnection",
+                        "inputs": {
+                          "parameters": {
+                            "dataset": "https://32kfnw.sharepoint.com/sites/Documentset2",
+                            "table": "81392896-b6a4-45bb-b7c7-7be850729c7f",
+                            "id": "@triggerBody()?['entity']['ID']",
+                            "item/Status/Value": "Rejected"
+                          },
+                          "host": {
+                            "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                            "operationId": "PatchFileItem",
+                            "connectionName": "shared_sharepointonline"
+                          }
+                        }
+                      },
+                      "For_each_3": {
+                        "foreach": "@outputs('Final_Approval')?['body/responses']",
+                        "actions": {
+                          "log_final_approval_status_-_Rejected": {
+                            "type": "OpenApiConnection",
+                            "inputs": {
+                              "parameters": {
+                                "dataset": "https://32kfnw.sharepoint.com/sites/Documentset2",
+                                "table": "ccc57b77-a63a-404e-bdc9-7b945ccc755f",
+                                "item/DocumentName": "@triggerBody()?['entity']['fileName']",
+                                "item/Action/Value": "Rejected",
+                                "item/Comments": "@outputs('Final_Approval')?['body/responseSummary']",
+                                "item/ActionDate": "@utcNow()",
+                                "item/Performedby/Claims": "@item()?['responder/email']"
+                              },
+                              "host": {
+                                "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                                "operationId": "PostItem",
+                                "connectionName": "shared_sharepointonline"
+                              }
+                            }
+                          }
+                        },
+                        "runAfter": {
+                          "Update_final_approval_status_-_Rejected": [
+                            "Succeeded"
+                          ]
+                        },
+                        "type": "Foreach"
+                      },
+                      "Terminate_2": {
+                        "runAfter": {
+                          "For_each_3": [
+                            "Succeeded"
+                          ]
+                        },
+                        "type": "Terminate",
+                        "inputs": {
+                          "runStatus": "Cancelled"
+                        }
+                      }
+                    }
+                  },
+                  "expression": {
+                    "and": [
+                      {
+                        "equals": [
+                          "@outputs('Final_Approval')?['body/outcome']",
+                          "Approve"
+                        ]
+                      }
+                    ]
+                  },
+                  "type": "If"
+                },
+                "For_each": {
+                  "foreach": "@outputs('Start_and_wait_for_an_approval')?['body/responses']",
+                  "actions": {
+                    "Log_status_update": {
+                      "type": "OpenApiConnection",
+                      "inputs": {
+                        "parameters": {
+                          "dataset": "https://32kfnw.sharepoint.com/sites/Documentset2",
+                          "table": "ccc57b77-a63a-404e-bdc9-7b945ccc755f",
+                          "item/DocumentName": "@triggerBody()?['entity']['fileName']",
+                          "item/Status": "Pending Final Approval",
+                          "item/Approver/Claims": "@items('For_each')?['responder/email']",
+                          "item/Action/Value": "Status Updated"
+                        },
+                        "host": {
+                          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                          "operationId": "PostItem",
+                          "connectionName": "shared_sharepointonline"
+                        }
+                      }
+                    }
+                  },
+                  "runAfter": {
+                    "Update_Status_-Pending_final_approval": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "Foreach"
+                }
+              },
+              "runAfter": {
+                "Start_and_wait_for_an_approval": [
+                  "Succeeded"
+                ]
+              },
+              "else": {
+                "actions": {
+                  "Update_file_properties_1": {
+                    "type": "OpenApiConnection",
+                    "inputs": {
+                      "parameters": {
+                        "dataset": "https://32kfnw.sharepoint.com/sites/Documentset2",
+                        "table": "81392896-b6a4-45bb-b7c7-7be850729c7f",
+                        "id": "@triggerBody()?['entity']['ID']",
+                        "item/Status/Value": "Rejected"
+                      },
+                      "host": {
+                        "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                        "operationId": "PatchFileItem",
+                        "connectionName": "shared_sharepointonline"
+                      }
+                    }
+                  },
+                  "Send_an_email_(V2)_1": {
+                    "runAfter": {
+                      "For_each_1": [
+                        "Succeeded"
+                      ]
+                    },
+                    "type": "OpenApiConnection",
+                    "inputs": {
+                      "parameters": {
+                        "emailMessage/To": "@outputs('decode')",
+                        "emailMessage/Subject": "Your document set approval was rejected.",
+                        "emailMessage/Body": "<p class=\"editor-paragraph\">Your document set approval for the document \"@{triggerBody()?['entity']['fileName']}\" was rejected.</p>",
+                        "emailMessage/Importance": "Normal"
+                      },
+                      "host": {
+                        "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365",
+                        "operationId": "SendEmailV2",
+                        "connectionName": "shared_office365"
+                      }
+                    }
+                  },
+                  "Terminate_1": {
+                    "runAfter": {
+                      "Send_an_email_(V2)_1": [
+                        "Succeeded"
+                      ]
+                    },
+                    "type": "Terminate",
+                    "inputs": {
+                      "runStatus": "Cancelled"
+                    }
+                  },
+                  "For_each_1": {
+                    "foreach": "@outputs('Start_and_wait_for_an_approval')?['body/responses']",
+                    "actions": {
+                      "Log_Rejection_history": {
+                        "type": "OpenApiConnection",
+                        "inputs": {
+                          "parameters": {
+                            "dataset": "https://32kfnw.sharepoint.com/sites/Documentset2",
+                            "table": "ccc57b77-a63a-404e-bdc9-7b945ccc755f",
+                            "item/DocumentName": "@triggerBody()?['entity']['fileName']",
+                            "item/Action/Value": "Rejected",
+                            "item/Comments": "@outputs('Start_and_wait_for_an_approval')?['body/responseSummary']",
+                            "item/ActionDate": "@utcNow()",
+                            "item/Performedby/Claims": "@items('For_each_1')?['responder/email']"
+                          },
+                          "host": {
+                            "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                            "operationId": "PostItem",
+                            "connectionName": "shared_sharepointonline"
+                          }
+                        }
+                      }
+                    },
+                    "runAfter": {
+                      "Update_file_properties_1": [
+                        "Succeeded"
+                      ]
+                    },
+                    "type": "Foreach"
+                  }
+                }
+              },
+              "expression": {
+                "and": [
+                  {
+                    "equals": [
+                      "@outputs('Start_and_wait_for_an_approval')?['body/outcome']",
+                      "Approve, Approve"
+                    ]
+                  }
+                ]
+              },
+              "type": "If"
+            },
+            "decode": {
+              "runAfter": {
+                "Audit_log": [
+                  "Succeeded"
+                ]
+              },
+              "type": "Compose",
+              "inputs": "@base64ToString(triggerOutputs()?['headers']?['x-ms-user-email-encoded'])"
+            }
+          },
+          "runAfter": {
+            "Get_file_properties": [
+              "Succeeded"
+            ]
+          },
+          "else": {
+            "actions": {
+              "Terminate": {
+                "type": "Terminate",
+                "inputs": {
+                  "runStatus": "Failed",
+                  "runError": {
+                    "message": "Selected item is not a Document Set"
+                  }
+                }
+              }
+            }
+          },
+          "expression": {
+            "and": [
+              {
+                "equals": [
+                  "@outputs('Get_file_properties')?['body/{ContentType}/Name']",
+                  "Document Set"
+                ]
+              }
+            ]
+          },
+          "type": "If"
+        }
+      }
+    },
+    "templateName": null
+  },
+  "schemaVersion": "1.0.0.0"
+}
